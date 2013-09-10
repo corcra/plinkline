@@ -1,0 +1,106 @@
+date:       Thu 05 Sep 2013 03:13:22 PM EDT
+*-----------------------------------------------*
+|   Documentation for "plinkline"               |
+|   Stephanie Hyland, July-Aug 2013.            |
+|   Tri-I CBM   sh985@cornell.edu               |
+*-----------------------------------------------*
+
+MAJOR NOTE: This is all hardcoded for organisms with 38 non-sex chromosomes, and a single X chromosome.
+
+The code itself is heavily commented (for the most part) so I will not go into much detail about its inner workings here.
+If it is doing weird things/not making sense/not working etc. feel free to email me at sh985@cornell.edu.
+I also appreciate constructive criticism! I am only learning python/R so this all might be a bit of a mess.
+
+*----- Running this elsewhere -----*
+
+This should work, but it requires numpy (for normalisation) and rpy2 (for finding regions), so you may need to install these at the new location. To get around not having superuser privileges, try "python setup.py install --user" when you have the appropriate setup.py for the module.
+In the scripts directory, setup_plinkline_directories.sh will create the necessary directories, but you will need to put the master ped files in ped_files and the ihsmap (like map) files in ihsmap_files.
+The file locations.py will need to be modified to adjust for the new locations.
+
+*----- Quick use -----*
+
+Go to the scripts directory. (or add the scripts directory to your PATH variable)
+
+(Optional) Peruse the output of "python2.7 plinkline.py --h" to read the help messages and see what run options you may be interested in.
+
+To do a 'full analysis': (aka 'no optional flags')
+(iHS) Make a list of the IDs of individuals in your population (one per line) and put this in the idlists directory. The name of this file will be used throughout the pipeline, so it should be something descriptive (eg 'terriers_10_per_breed' or whatever). It should have the suffix ".idlist", however. Then run
+    python2.7 plinkline.py --ihs FILENAME
+(XP-EHH) As for iHS, make lists of the IDs in your two populations, stick them in idlists. Then run: 
+    python2.7 plinkline.py --xpehh FILENAME1 FILENAME2
+
+Assuming the individuals you have listed are contained in the 'master ped files', and everything else going well, sit back and wait for results. (May take hours.)
+
+Note 1: the master ped files are located in the ped_files directory (not in any of the chr subdirectories), in the form NAME_STEM.chrN.ped. NAME_STEM can be changed in scripts/locations.py (variable is master_ped_name).
+
+Note 2: for the most part the pipeline is conservative, so it won't do things twice if the files already exist. This means it's unlikely to overwrite existing data, but if for some reason you have a mixture of datasets with the same file-names, things will get very messed up.
+
+*----- Doing a partial analysis -----* 
+
+(If things are going wrong it's probably because the pipeline can't find the right files, which is why this is so tediously detailed about filenames. There is a small bash script called setup_plinkline_directories.sh which will create all of the required folders automatically.)
+
+EXAMPLE: Extract Boerboels from ped file, translate that into ihshap files, run iHS, and normalise the output.
+    python2.7 plinkline.py --ihs boerboel --extract --translate --run_test --normalise
+
+There are five subroutines within the analysis, any one of which can be done on its own (or together). These correspond to different optional flags in the script (run with flag --h to see the help file on this). Here I will detail what sort of files you require/produce with each of those flags:
+
+--extract       Needs: 
+                    master ped file, appropriately named (change location in locations.py if necessary), containing IDs of interest.
+                    list(s) of IDs (one per line) in idlists folder.
+                Produces:
+                    individual ped files containing individuals with those IDs, named after the name of the list of IDs.
+
+--translate     Needs:
+                    individual ped files, named after populations of interest (options in the --xpehh or --ihs flags), contained in ped_files/chrN
+                    ihsmap files contained in ihsmap_files, named chrN.ihsmap
+                Produces:
+                    ihshap files, similarly named after populations, contained in ihshap_files/chrN.
+
+--run_test      Needs:
+                    ihshap files named after population(s), contained in ihshap_files/chrN.
+                    ihsmap files contained in ihsmap_files, named chrN.ihsmap
+                    Pritchard scripts contained in pritchard/...
+                Produces:
+                    test_statistic files, named like population1.chrN (iHS) or popA-popB.chrN (xpehh) contained in test_statistics/xpehh(/ihs)/chrN
+
+--normalise     Needs:
+                    test_statistic files, with names like population1.chrN or popA-popB.chrN, in test_statistics/xpehh(/ihs)/chrN
+                Produces:
+                    test_statistic files, with the same name as before, and '.norm' as a suffix
+
+--analyse       Needs:
+                    normalised test_statistic files, named like pop1.chrN.norm or popA-popB.chrN.norm
+                Produces:
+                    .region files, named like pop1.regions or popA-popB.regions, located in regions/ directory.
+
+Note: if you have normalised test statistic files and region files, you can use "visualise_regions.py" in the scripts folder to generate R code to look at them.
+The usage is:
+    visualise_regions.py <test_statistic_file_stem> <data_type> <chr>
+eg: visualise_regions.py terriers-not_terriers xpehh 13
+This writes an R script into the test_statistics/xpehh (or ihs) directory called 'look_chr.r' which you can run in R with source('look_chr.r')
+
+*----- Directories and their contents -----*
+idlists             Files containing IDs (one per line) corresponding to individual ID in plink ped files. Filenames correspond to population names, but must have ".idlist" as a suffix.
+                    Note: the program only cares about the first field in each line, so you can put whatever sort of descriptors you want in after that.
+                    Use: the extraction subroutine takes idlists as input and produces separate ped files (named after the idlist name) for the populations.
+
+ihshap_files        The Pritchard scripts take .ihshap and .ihsmap files as inputs. These are the 'haplotype' files. They are essentially modified .ped files.
+                    Use: the translation subroutine combines .ihsmap and .ped files (chr by chr) to produce corresponding .ihshap files. 0 corresponds to the derived allele at a SNP, 1 the ancestral. Haplotypes (-> chromosomes) are put on separate lines.
+
+ihsmap_files        This folder simply contains the .ihsmap files for each chromosome. These are very similar to map files.
+                    Note: these must be supplied. The program only reads them.
+
+jobs                This folder is not actually used in the pipeline proper, but I kept notes on various populations in here. For example: populations may be made of existing populations ("terriers" made up of all terrier breeds, for which we already have ihshaps, for example). There is a script "combine_ihshaps.py" in the scripts folder which skips the extraction and translation stages (translation is quite slow) for this scenario, and simply concatenates the the relevant pre-existing ihshap files. It takes as input a list of existing population NAMES, and some of these exist in the jobs folder.
+
+ped_files           In the body of this folder are the master ped files for each chromosome (phased). Extracted ped files go in the chrN folders.
+                    Use: the output of the extraction subroutine writes into these folders.
+
+pritchard           This is just the contents of http://hgdp.uchicago.edu/Software/, pretty much. XPEHH is in 'dist'. See here for documentation on those scripts. This location will need to be specified in locations.py, as for most of these folders.
+
+regions             After all the analysis and normalisation, a list of 'putatitive regions of selection' for each population (iHS) or population-comparison (XP-EHH) analysis will go here. The naming convention is simply population1.regions or populationA-populationB.regions, respectively.
+                    Note: the format of .regions files is:
+                        chr    start(cf3.1)    end(cf3.1)    window_score    top_snp_id    top_snp_location    top_snp_score
+                    where window_score is probably 'average absolute test statistic for SNPs in that region', but it depends on what option is uncommented in analyse.py.
+
+test_statistics     This has subfolders ihs and xpehh, though that's probably a bit needless.
+                    Use: the output of the Pritchard scripts go here, chromosome by chromosome. See the Pritchard documentation for more about these files. Files with ".norm" have been normalised by the normalisation subroutine (it adds an additional column, so it is safe to take the final column of these files as the test statistic for that SNP).
